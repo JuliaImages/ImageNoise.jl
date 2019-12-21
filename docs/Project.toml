@@ -1,6 +1,15 @@
 [deps]
+DemoCards = "311a05b2-6137-4a5a-b473-18580a3d38b5"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+ImageCore = "a09fc81d-aa75-5fe9-8630-4744c3626534"
+ImageDistances = "51556ac3-7006-55f5-8cb3-34580c88182d"
+ImageMagick = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
 ImageNoise = "2e361c58-64d7-11e9-3ab3-89c4c0b8f7db"
+ImageQualityIndexes = "2996bd0c-7a13-11e9-2da2-2f5ce47296a9"
+ImageShow = "4e3cecfd-b093-5904-9786-8bbb286a6a31"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+TestImages = "5e47fb64-e119-507b-a336-dd2b206d9990"
 
 [compat]
 Documenter = "0.24"
