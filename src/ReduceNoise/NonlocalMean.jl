@@ -72,32 +72,33 @@ NonlocalMean(λ, img::GenericImage) = NonlocalMean(λ, max(round.(size(img)./128
 function (f::NonlocalMean)(out::AbstractArray{<:NumberLike, 2},
                            img::AbstractArray{<:NumberLike, 2})
     r_p, r_s, λ = f.r_p, f.r_s, f.λ^2
-    kernel = make_kernel(f.r_p)
 
-    img = of_eltype(floattype(eltype(img)), centered(img))
-    out = centered(out)
+    T = floattype(eltype(img))
+    kernel = T.(make_kernel(f.r_p))
+    img = of_eltype(T, img)
+
     R = CartesianIndices(img) # indices without padding
 
-    offset_p = Tuple(repeated(r_p, ndims(img)))
-    img = padarray(img, Pad(:symmetric, offset_p, offset_p))
-    offset_p = CartesianIndex(offset_p)
-    offset_s = CartesianIndex(Tuple(repeated(r_s, ndims(img))))
+    oₚ = ntuple(_->r_p, ndims(img))
+    img = padarray(img, Pad(:symmetric, oₚ, oₚ))
+    Δₚ = CartesianIndex(oₚ)
+    Δₛ = CartesianIndex(ntuple(_->r_s, ndims(img)))
 
-    wsqeuclidean(k, w1, w2) = k*(w1-w2)^2
-    d_temp = similar(kernel)
+    wsqeuclidean(k, w1, w2) = k*abs2(w1-w2)
+    d_buffer = similar(kernel)
     for p in R
-        patch_p = img[_colon(p-offset_p, p+offset_p)]
+        patch_p = img[_colon(p-Δₚ, p+Δₚ)]
 
         wmax = 0 # set w[p, p] as wmax instead of 1
         ∑wq  = 0
         ∑w   = 0 # Z[p] in the docstring
-        for q in _colon(R[max(p-offset_s, first(R))], R[min(p+offset_s, last(R))])
+        for q in _colon(max(first(R), p-Δₛ), min(p+Δₛ, last(R)))
             p==q && continue # skip w[p, p]
-            patch_q = img[_colon(q-offset_p, q+offset_p)] # faster than @view
+            patch_q = @view img[_colon(q-Δₚ, q+Δₚ)]
 
             # calculate weight
-            broadcast!(wsqeuclidean, d_temp, kernel, patch_p, patch_q)
-            w = exp(-sum(d_temp)/λ)
+            broadcast!(wsqeuclidean, d_buffer, kernel, patch_p, patch_q)
+            w = exp(-sum(d_buffer)/λ)
 
             if w > wmax
                 wmax=w
@@ -120,7 +121,7 @@ function (f::NonlocalMean)(out::AbstractArray{T, 2},
                            img::AbstractArray{T, 2}) where T<: AbstractRGB
     cv_out = channelview(out)
     cv_img = channelview(img)
-    for i in 1:3
+    for i in 1:size(cv_img, 1)
         f(view(cv_out, i, :, :), view(cv_img, i, :, :))
     end
     return out
@@ -144,5 +145,5 @@ function make_kernel(r)
             kernel[i] += v
         end
     end
-    parent(kernel ./ sum(kernel))
+    OffsetArrays.no_offset_view(kernel ./ sum(kernel))
 end
