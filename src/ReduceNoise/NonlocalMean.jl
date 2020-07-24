@@ -116,18 +116,23 @@ function (f::NonlocalMean)(out::AbstractArray{<:NumberLike, 2},
     return out
 end
 
-function (f::NonlocalMean)(out::AbstractArray{<:AbstractRGB, 2},
-                           img::AbstractArray{<:AbstractRGB, 2})
+function (f::NonlocalMean)(out::AbstractArray{T, 2},
+                           img::AbstractArray{T, 2}) where T<: AbstractRGB
     cv_out = channelview(out)
     cv_img = channelview(img)
     for i in 1:3
         f(view(cv_out, i, :, :), view(cv_img, i, :, :))
     end
+    return out
 end
 
-(f::NonlocalMean)(out::AbstractArray{<:Color3, 2},
-                  img::AbstractArray{<:Color3, 2}) =
-    f(of_eltype(RGB, out), of_eltype(RGB, img))
+function (f::NonlocalMean)(out::AbstractArray{T, 2},
+                  img::AbstractArray{T, 2}) where T<:Color3
+    img = RGB.(img)
+    tmp = similar(img)
+    out .= f(tmp, img)
+    # f(of_eltype(RGB, out), of_eltype(RGB, img))
+end
 
 """ gaussian-like kernel """
 function make_kernel(r)
