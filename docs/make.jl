@@ -1,8 +1,8 @@
 using ImageNoise
 using Documenter, DemoCards
 
-theme = cardtheme()
-examples, postprocess_cb = makedemos("examples")
+templates, theme = cardtheme()
+examples, postprocess_cb = makedemos("examples", templates)
 
 format = Documenter.HTML(edit_link = "master",
                          prettyurls = get(ENV, "CI", nothing) == "true",
