@@ -20,11 +20,11 @@ where `w[p, q]` represents the similarity of two patches centered in `p` and
 
 # Arguments
 
-* `λ::Float64` is the degree of filtering, larger `λ` produces a smoother result.
+* `λ::Float32` is the degree of filtering, larger `λ` produces a smoother result.
 
-* `r_p::Int64` is the radius of image patch size. By default it's 2.
+* `r_p::Int` is the radius of image patch size. By default it's 2.
 
-* `r_s::Int64` is the radius of search window, large `r_s` would slow down
+* `r_s::Int` is the radius of search window, large `r_s` would slow down
 the filtering significantly. By default it's `2r_p + 1`.
 
 * If you pass `img` to `NonlocalMean`, it will be used to estimate `r_p` and `r_s`.
@@ -54,7 +54,7 @@ See also: [`reduce_noise`](@ref), [`reduce_noise!`](@ref)
 """
 struct NonlocalMean <: AbstractImageDenoiseAlgorithm
     """degree of filtering"""
-    λ::Float64
+    λ::Float32
     """radius of image patch"""
     r_p::Int
     """radius of search window"""
@@ -71,10 +71,11 @@ NonlocalMean(λ, img::GenericImage) = NonlocalMean(λ, max(round.(size(img)./128
 
 function (f::NonlocalMean)(out::AbstractArray{<:NumberLike, 2},
                            img::AbstractArray{<:NumberLike, 2})
+    axes(out) == axes(img) || ArgumentError("Images should have the same axes.")
     r_p, r_s, λ = f.r_p, f.r_s, f.λ^2
 
     T = floattype(eltype(img))
-    kernel = T.(make_kernel(f.r_p))
+    kernel = make_kernel(T, f.r_p)
     img = of_eltype(T, img)
 
     R = CartesianIndices(img) # indices without padding
@@ -84,29 +85,28 @@ function (f::NonlocalMean)(out::AbstractArray{<:NumberLike, 2},
     Δₚ = CartesianIndex(oₚ)
     Δₛ = CartesianIndex(ntuple(_->r_s, ndims(img)))
 
-    wsqeuclidean(k, w1, w2) = k*abs2(w1-w2)
-    d_buffer = similar(kernel)
+    patch_p = zeros(T, size(kernel))
     for p in R
-        patch_p = img[_colon(p-Δₚ, p+Δₚ)]
+        # patch_p will be indexed for many times, thus preallocating it into a contiguous memeory layout
+        # helps improve the performance
+        patch_p .= @view img[_colon(p-Δₚ, p+Δₚ)]
 
-        wmax = 0 # set w[p, p] as wmax instead of 1
-        ∑wq  = 0
-        ∑w   = 0 # Z[p] in the docstring
-        for q in _colon(max(first(R), p-Δₛ), min(p+Δₛ, last(R)))
-            p==q && continue # skip w[p, p]
-            patch_q = @view img[_colon(q-Δₚ, q+Δₚ)]
+        wmax = zero(T) # set w[p, p] as wmax instead of 1
+        ∑wq  = zero(T)
+        ∑w   = zero(T) # Z[p] in the docstring
+        @inbounds @simd for q in _colon(max(first(R), p-Δₛ), min(p+Δₛ, last(R)))
+            if p != q
+                patch_q = @view img[_colon(q-Δₚ, q+Δₚ)]
 
-            # calculate weight
-            broadcast!(wsqeuclidean, d_buffer, kernel, patch_p, patch_q)
-            w = exp(-sum(d_buffer)/λ)
+                # calculate weight
+                w = T(exp(-wsqeucliean(kernel, patch_p, patch_q)/λ))
 
-            if w > wmax
-                wmax=w
+                # weighted sum over q
+                ∑wq += w*img[q]
+                ∑w  += w;
+
+                w > wmax && (wmax = w)
             end
-
-            # weighted sum over q
-            ∑wq += w*img[q]
-            ∑w  += w;
         end
         # add w[p, p] in the end
         ∑wq += wmax*img[p]
@@ -136,7 +136,7 @@ function (f::NonlocalMean)(out::AbstractArray{T, 2},
 end
 
 """ gaussian-like kernel """
-function make_kernel(r)
+function make_kernel(T, r)
     kernel = centered(zeros(2r+1, 2r+1))
     R = CartesianIndices(kernel)
     for d in 1:r
@@ -145,5 +145,15 @@ function make_kernel(r)
             kernel[i] += v
         end
     end
-    OffsetArrays.no_offset_view(kernel ./ sum(kernel))
+    centered(T.(kernel ./ sum(kernel)))
+end
+
+""" weighted squared euclidean """
+function wsqeucliean(W, X, Y)
+    rst = zero(eltype(W))
+    # use linear indexing
+    @inbounds @simd for i = 1:length(W)
+        rst += W[i] * abs2(X[i] - Y[i])
+    end
+    return rst
 end
