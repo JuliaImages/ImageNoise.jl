@@ -11,6 +11,7 @@ include("ApplyNoise/AdditiveWhiteGaussianNoise.jl")
 
 # ReduceNoise
 @info "Test: ReduceNoise"
+include("ReduceNoise/utilities.jl")
 include("ReduceNoise/NonlocalMean.jl")
 end
 

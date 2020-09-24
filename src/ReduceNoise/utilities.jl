@@ -1,0 +1,115 @@
+@doc raw"""
+    soft_threshold(X, γ)
+
+Soft thresholding `X` with threshold `γ` using `sign(X) * max(abs(X) - γ, 0)`. Broadcasting is applied
+when necessarily.
+
+# Examples
+
+`soft_threshold(X, 1/λ)` is the solution to the simplified lasso problem:
+
+```math
+    \min_d \lvert d \rvert + \frac{\lambda}{2} \lVert d - X \rVert^2_2
+```
+
+# References
+
+[1] Goldstein, T., & Osher, S. (2009). The split Bregman method for L1-regularized problems. _SIAM journal on imaging sciences_, 2(2), 323-343.
+
+[2] Wikipedia contributors. (2020, July 15). Lasso (statistics). In _Wikipedia, The Free Encyclopedia_. Retrieved 10:40, August 21, 2020, from https://en.wikipedia.org/w/index.php?title=Lasso_(statistics)&oldid=967820964
+
+"""
+soft_threshold(X, γ) = soft_threshold.(X, γ)
+soft_threshold(x::T, γ::Number) where T <: Number = sign(x) * max(abs(x) - _maybe_promote(T, γ), zero(T))
+# TODO: for cases that x is positve, max(x - γ, 0) is slightly faster
+
+_maybe_promote(::Type{T}, x) where T = convert(T, x)
+_maybe_promote(::Type{T1}, x::T2) where {T1 <: Union{Bool,Integer},T2} = promote_type(T1, T2)(x)
+
+
+"""
+    block_matching([f=mse,] img, p; kwargs...)
+
+Given the patch center `p` and image `img`, search the `num_patches` most similar patches to
+patch_p. The returned results are `Vector{CartesianIndices}` which stores the positions of each
+patch.
+
+# Outputs
+
+* `indices::Vector{<:CartesianIndices}`: each item is the CartesianIndices of the matched patch.
+
+# Arguments
+
+* `f`: a smaller `f(patch, ref_patch)` means these two patches are more similar. The default measure
+   is `ImageDistances.mse`.
+* `img`: the image that block matching is literating over
+* `p`: the patch center
+
+# Parameters
+
+* (Required) `num_patches`: the number of patches that should be returned.
+* (Required) `patch_size`
+* `search_size = size(img)`: the search window size, by default it searches the whole image.
+* `stride = patch_size`: loop step size
+
+# Examples
+
+```jldoctest; setup = :(using TestImages, ImageNoise)
+julia> img = testimage("cameraman");
+
+julia> p = CartesianIndex(35, 35);
+
+julia> indices = ReduceNoise.block_matching(img, p; num_patches=5, patch_size=7)
+5-element Array{CartesianIndices{2,Tuple{UnitRange{Int64},UnitRange{Int64}}},1}:
+[...]
+
+julia> first(indices) == p # p is always the first item
+true
+```
+
+"""
+function block_matching(
+        f, img, p::CartesianIndex;
+        num_patches,
+        patch_size,
+        search_window_size=size(img),
+        patch_stride=patch_size)::Vector{CartesianIndices{ndims(img)}}
+    # Offset is not considered, it might work, it might not work. I don't know yet.
+    Base.require_one_based_indexing(img)
+
+    patch_size isa Number && (patch_size = ntuple(_ -> patch_size, ndims(img)))
+    search_window_size isa Number && (search_window_size = ntuple(_ -> search_window_size, ndims(img)))
+
+    all(isodd.(patch_size)) || throw(ArgumentError("`patch_size = $(patch_size)` should be odd numbers"))
+    R = CartesianIndices(img)
+    R_first, R_last = first(R), last(R)
+
+    rₚ = CartesianIndex(patch_size .÷ 2) # patch radius
+    Base.@boundscheck checkbounds(R, p - rₚ)
+    Base.@boundscheck checkbounds(R, p + rₚ)
+    # patch_p is used repeatly so we need a contiguous memeory layout to get better performance
+    patch_p = img[p - rₚ:p + rₚ]
+    measure_func(p) = f(view(img, p - rₚ:p + rₚ), patch_p)
+
+    rₛ = CartesianIndex(search_window_size .÷ 2) # search window radius
+
+    # get a sparse grid
+    # R_first:Δ:R_last is not supported yet
+    Rw = let R = p - rₛ:p + rₛ
+        grid = map(axes(R)) do I
+            first(I):patch_stride:last(I)
+        end
+        R[grid...] # TODO: this isn't efficient
+    end
+    Rw = filter(Rw) do q
+        # for simplicity, drop any patch that exceeds the boundary
+        q - rₚ in R && q + rₚ in R
+    end
+    length(Rw) <= num_patches && throw(ArgumentError("search window size $(search_window_size) is too small to get enough patches"))
+
+    dist = measure_func.(Rw)
+    indices = Rw[partialsortperm(dist, 1:num_patches)]
+
+    return [q - rₚ:q + rₚ for q in indices]
+end
+block_matching(img, p::CartesianIndex; kwargs...) = block_matching(ssd, img, p::CartesianIndex; kwargs...)
