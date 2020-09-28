@@ -125,7 +125,7 @@ function (f::WNNM)(imgₑₛₜ, imgₙ; clean_img=nothing)
     return imgₑₛₜ
 end
 
-function _estimate_img(imgₑₛₜ, imgₙ; patch_size, patch_stride, kwargs...)
+function _estimate_img(imgₑₛₜ, imgₙ; patch_size, patch_stride, num_patches, kwargs...)
     patch_size = ntuple(_ -> patch_size, ndims(imgₑₛₜ))
     r = CartesianIndex(patch_size .÷ 2)
     R = CartesianIndices(imgₑₛₜ)
@@ -135,8 +135,11 @@ function _estimate_img(imgₑₛₜ, imgₙ; patch_size, patch_stride, kwargs...
     W = zeros(Int, axes(imgₑₛₜ))
 
     progress = Progress(length(R[1:patch_stride:end]))
+    out_patches = [Matrix{eltype(imgₑₛₜ)}(undef, prod(patch_size), num_patches) for i in 1:Threads.nthreads()]
     Threads.@threads for p in R[1:patch_stride:end]
-        out, patch_q_indices = _estimate_patch(imgₑₛₜ, imgₙ, p; patch_size=patch_size, kwargs...)
+        out = out_patches[Threads.threadid()]
+        fill!(out, zero(eltype(out)))
+        patch_q_indices = _estimate_patch!(out, imgₑₛₜ, imgₙ, p; patch_size=patch_size, num_patches=num_patches, kwargs...)
 
         view(W, patch_q_indices) .+= 1
         view(imgₑₛₜ⁺, patch_q_indices) .+= out
@@ -146,7 +149,7 @@ function _estimate_img(imgₑₛₜ, imgₙ; patch_size, patch_stride, kwargs...
     return imgₑₛₜ⁺ ./ max.(W, 1)
 end
 
-function _estimate_patch(imgₑₛₜ, imgₙ, p;
+function _estimate_patch!(out, imgₑₛₜ, imgₙ, p;
                          noise_level,
                          patch_size::Tuple,
                          num_patches::Integer,
@@ -171,9 +174,10 @@ function _estimate_patch(imgₑₛₜ, imgₙ, p;
         # Try: use the mean estimated σₚ of each patch
         σₚ = _estimate_noise_level(view(imgₑₛₜ, p_indices), view(imgₙ, p_indices), noise_level; λ=λ)
     end
-    out = WNNM_optimizer(imgₑₛₜ[patch_q_indices] .- m, σₚ; C=C, svd_rank=svd_rank) .+ m
+    WNNM_optimizer!(out, imgₑₛₜ[patch_q_indices] .- m, σₚ; C=C, svd_rank=svd_rank)
+    out .+= m
 
-    return out, patch_q_indices
+    return patch_q_indices
 end
 
 
@@ -193,7 +197,7 @@ The weight `w` is specially chosen so that it satisfies the condition of Corolla
 [1] Gu, S., Zhang, L., Zuo, W., & Feng, X. (2014). Weighted nuclear norm minimization with application to image denoising. In _Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition_ (pp. 2862-2869).
 
 """
-function WNNM_optimizer(Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
+function WNNM_optimizer!(out, Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
     # Apply Corollary 1 in [1] for image denoise purpose
     # Note: this solver is reserved to the denoising method and is not supposed to be used in other
     #       applications; it simply isn't designed so.
@@ -201,7 +205,8 @@ function WNNM_optimizer(Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
     # This is different from the original implementation. Here we use an approximate version of svd;
     # it gives better performance in both speed and denoising result.
     n = size(Y, 2)
-    U, ΣY, V = LowRankApprox.psvd(Y; rank=svd_rank)
+    F = LowRankApprox.psvdfact(Y; rank=svd_rank)
+    ΣY = F.S
 
     # For image denoising problems, it is natural to shrink large singular value less, i.e., to set
     # smaller weight to large singular value. For this reason, it uses `w = (C * sqrt(n))/(ΣX + eps())`
@@ -223,7 +228,8 @@ function WNNM_optimizer(Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
         @. ΣX = soft_threshold(ΣY, (C * sqrt(n) * σₚ^2) / (ΣX + eps()))
     end
 
-    return U * Diagonal(ΣX) * V'
+    # in-place version of U * Diagonal(ΣX) * V'
+    mul!(out, rmul!(F.U, Diagonal(ΣX)), F.Vt)
 end
 
 
