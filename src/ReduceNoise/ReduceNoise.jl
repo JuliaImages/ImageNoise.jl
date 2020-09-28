@@ -10,6 +10,7 @@ using ImageFiltering
 using ColorVectorSpace
 using ImageDistances
 using Statistics
+using LowRankApprox
 
 using ImageQualityIndexes # TODO: remove this
 using ProgressMeter # TODO: remove this
@@ -21,9 +22,7 @@ include("utilities.jl")
 include("NonlocalMean.jl")
 include("WNNM.jl") # Weighted Nuclear Norm Minimization
 
-export
-    reduce_noise, reduce_noise!,
-
+export reduce_noise, reduce_noise!,
     # Non-local mean filter for gaussian noise
     NonlocalMean,
 

@@ -113,3 +113,44 @@ function block_matching(
     return [q - rₚ:q + rₚ for q in indices]
 end
 block_matching(img, p::CartesianIndex; kwargs...) = block_matching(ssd, img, p::CartesianIndex; kwargs...)
+
+
+# Threads helper
+
+function get_num_threads()
+    blas = LinearAlgebra.BLAS.vendor()
+    # Wrap in a try to catch unsupported blas versions
+    try
+        if blas == :openblas
+            return ccall((:openblas_get_num_threads, Base.libblas_name), Cint, ())
+        elseif blas == :openblas64
+            return ccall((:openblas_get_num_threads64_, Base.libblas_name), Cint, ())
+        elseif blas == :mkl
+            return ccall((:MKL_Get_Max_Num_Threads, Base.libblas_name), Cint, ())
+        end
+
+        # OSX BLAS looks at an environment variable
+        if Sys.isapple()
+            return tryparse(Cint, get(ENV, "VECLIB_MAXIMUM_THREADS", "1"))
+        end
+    catch
+    end
+
+    return nothing
+end
+
+function with_blas_threads(f, num_threads)
+    prev_num_threads = get_num_threads()
+    prev_num_threads = isnothing(prev_num_threads) ? 1 : prev_num_threads
+    BLAS.set_num_threads(num_threads)
+    retval = nothing
+    try
+        retval = f()
+    catch err
+        rethrow(err)
+    finally
+        BLAS.set_num_threads(prev_num_threads)
+    end
+
+    return retval
+end

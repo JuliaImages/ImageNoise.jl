@@ -24,6 +24,8 @@ struct WNNM <: AbstractImageDenoiseAlgorithm
     C::Float64
     "non-local search size in block matching"
     window_size::Int
+    "matrix rank that used to allow early-stop in svd approximation"
+    svd_rank::Vector{Int}
 end
 
 function WNNM(noise_level;
@@ -34,6 +36,7 @@ function WNNM(noise_level;
               num_patches=nothing,
               K=nothing,
               λ=nothing,
+              svd_rank=nothing,
               patch_stride=nothing)
     if noise_level <= 20
         isnothing(patch_size) && (patch_size = 6)
@@ -61,6 +64,14 @@ function WNNM(noise_level;
     isnothing(patch_stride) && (patch_stride = @. max(1, patch_size ÷ 2 - 1))
     patch_stride isa Number && (patch_stride = fill(patch_stride, K))
 
+    if isnothing(svd_rank)
+        svd_rank = map(enumerate(patch_size)) do (i, sz)
+            min(5i, 5 + sz^2 ÷ 2)
+        end
+    elseif svd_rank isa Number
+        svd_rank = fill(svd_rank, K)
+    end
+
     num_patches = fill(num_patches - 10, K)
     drop_freq = 2
     for k in 2:K
@@ -68,7 +79,7 @@ function WNNM(noise_level;
         num_patches[k] = (k - 1) % drop_freq == 0 ? num_patches[k - 1] - 10 : num_patches[k - 1]
     end
 
-    WNNM(noise_level, K, δ, num_patches, patch_size, patch_stride, λ, C, window_size)
+    WNNM(noise_level, K, δ, num_patches, patch_size, patch_stride, λ, C, window_size, svd_rank)
 end
 
 ## Implementation
@@ -89,16 +100,20 @@ function (f::WNNM)(imgₑₛₜ, imgₙ; clean_img=nothing)
         # global noise level can be misleading.
         σₚ = iter == 1 ? f.noise_level : nothing
 
-        imgₑₛₜ .= _estimate_img(imgₑₛₜ, imgₙ;
-            noise_level=f.noise_level,
-            patch_size=f.patch_size[iter],
-            patch_stride=f.patch_stride[iter],
-            num_patches=f.num_patches[iter],
-            window_size=f.window_size,
-            λ=f.λ,
-            C=f.C,
-            σₚ=σₚ,
-        )
+        # calculating svd using blas threads is not an optimal parallel strategy
+        imgₑₛₜ .= with_blas_threads(1) do
+            _estimate_img(imgₑₛₜ, imgₙ;
+                noise_level=f.noise_level,
+                patch_size=f.patch_size[iter],
+                patch_stride=f.patch_stride[iter],
+                num_patches=f.num_patches[iter],
+                window_size=f.window_size,
+                λ=f.λ,
+                C=f.C,
+                σₚ=σₚ,
+                svd_rank=f.svd_rank[iter],
+            )
+        end
 
         # TODO: remove this logging part when it is ready
         if !isnothing(clean_img)
@@ -118,11 +133,14 @@ function _estimate_img(imgₑₛₜ, imgₙ; patch_size, patch_stride, kwargs...
 
     imgₑₛₜ⁺ = zeros(eltype(imgₑₛₜ), axes(imgₑₛₜ)) # TODO: preallocate this
     W = zeros(Int, axes(imgₑₛₜ))
-    @showprogress for p in R[1:patch_stride:end]
+
+    progress = Progress(length(R[1:patch_stride:end]))
+    Threads.@threads for p in R[1:patch_stride:end]
         out, patch_q_indices = _estimate_patch(imgₑₛₜ, imgₙ, p; patch_size=patch_size, kwargs...)
 
         view(W, patch_q_indices) .+= 1
         view(imgₑₛₜ⁺, patch_q_indices) .+= out
+        next!(progress)
     end
 
     return imgₑₛₜ⁺ ./ max.(W, 1)
@@ -135,6 +153,7 @@ function _estimate_patch(imgₑₛₜ, imgₙ, p;
                          window_size,
                          λ,
                          C,
+                         svd_rank,
                          σₚ=nothing)
     rₚ = CartesianIndex(patch_size .÷ 2)
     p_indices = p - rₚ:p + rₚ
@@ -152,14 +171,14 @@ function _estimate_patch(imgₑₛₜ, imgₙ, p;
         # Try: use the mean estimated σₚ of each patch
         σₚ = _estimate_noise_level(view(imgₑₛₜ, p_indices), view(imgₙ, p_indices), noise_level; λ=λ)
     end
-    out = WNNM_optimizer(imgₑₛₜ[patch_q_indices] .- m, σₚ; C=C) .+ m
+    out = WNNM_optimizer(imgₑₛₜ[patch_q_indices] .- m, σₚ; C=C, svd_rank=svd_rank) .+ m
 
     return out, patch_q_indices
 end
 
 
 @doc raw"""
-    WNNM_optimizer(Y, σₚ, C=2sqrt(2), fixed_point_num_iters=3)
+    WNNM_optimizer(Y, σₚ; C, rank, fixed_point_num_iters=3)
 
 Optimizes the weighted nuclear norm minimization problem with a fixed point estimation
 
@@ -174,13 +193,15 @@ The weight `w` is specially chosen so that it satisfies the condition of Corolla
 [1] Gu, S., Zhang, L., Zuo, W., & Feng, X. (2014). Weighted nuclear norm minimization with application to image denoising. In _Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition_ (pp. 2862-2869).
 
 """
-function WNNM_optimizer(Y, σₚ; C=2sqrt(2), fixed_point_num_iters=3)
+function WNNM_optimizer(Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
     # Apply Corollary 1 in [1] for image denoise purpose
     # Note: this solver is reserved to the denoising method and is not supposed to be used in other
     #       applications; it simply isn't designed so.
 
-    U, ΣY, V = svd(Y)
+    # This is different from the original implementation. Here we use an approximate version of svd;
+    # it gives better performance in both speed and denoising result.
     n = size(Y, 2)
+    U, ΣY, V = LowRankApprox.psvd(Y; rank=svd_rank)
 
     # For image denoising problems, it is natural to shrink large singular value less, i.e., to set
     # smaller weight to large singular value. For this reason, it uses `w = (C * sqrt(n))/(ΣX + eps())`
