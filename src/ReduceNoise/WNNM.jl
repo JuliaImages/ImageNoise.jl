@@ -66,7 +66,7 @@ function WNNM(noise_level;
 
     if isnothing(svd_rank)
         svd_rank = map(enumerate(patch_size)) do (i, sz)
-            min(5i, 5 + sz^2 ÷ 2)
+            min(5 + 5i, 5 + sz^2 ÷ 2)
         end
     elseif svd_rank isa Number
         svd_rank = fill(svd_rank, K)
@@ -92,7 +92,7 @@ function (f::WNNM)(imgₑₛₜ, imgₙ; clean_img=nothing)
     end
 
     for iter in 1:f.K
-        @. imgₑₛₜ = imgₑₛₜ + f.δ * (imgₙ - imgₑₛₜ)
+        @. imgₑₛₜ = imgₑₛₜ + f.δ * (imgₙ - imgₑₛₜ) # This iteration can be done more sophisticatedly
 
         # The noise level for the first iteration is known (whether it is estimated outside or a
         # white noise). The noise is removed in each iteration, so we have to estimate a noise level
@@ -117,7 +117,7 @@ function (f::WNNM)(imgₑₛₜ, imgₙ; clean_img=nothing)
 
         # TODO: remove this logging part when it is ready
         if !isnothing(clean_img)
-            @info "Result" iter psnr = assess_psnr(clean_img, imgₑₛₜ, 255) num_patches = f.num_patches[iter]
+            @info "Result" iter psnr = assess_psnr(clean_img, imgₑₛₜ, 255) num_patches = f.num_patches[iter] svd_rank=f.svd_rank[iter]
             display(Gray.(imgₑₛₜ ./ 255))
             sleep(0.1)
         end
@@ -205,8 +205,11 @@ function WNNM_optimizer!(out, Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
     # This is different from the original implementation. Here we use an approximate version of svd;
     # it gives better performance in both speed and denoising result.
     n = size(Y, 2)
-    F = LowRankApprox.psvdfact(Y; rank=svd_rank)
-    ΣY = F.S
+    if svd_rank >= ceil(Int, 0.5minimum(size(Y)))
+        U, ΣY, V = svd!(Y)
+    else
+        U, ΣY, V = LowRankApprox.psvd(Y; rank=svd_rank)
+    end
 
     # For image denoising problems, it is natural to shrink large singular value less, i.e., to set
     # smaller weight to large singular value. For this reason, it uses `w = (C * sqrt(n))/(ΣX + eps())`
@@ -228,8 +231,7 @@ function WNNM_optimizer!(out, Y, σₚ; C, svd_rank, fixed_point_num_iters=3)
         @. ΣX = soft_threshold(ΣY, (C * sqrt(n) * σₚ^2) / (ΣX + eps()))
     end
 
-    # in-place version of U * Diagonal(ΣX) * V'
-    mul!(out, rmul!(F.U, Diagonal(ΣX)), F.Vt)
+    mul!(out, rmul!(U, Diagonal(ΣX)), V')
 end
 
 
