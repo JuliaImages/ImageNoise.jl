@@ -5,6 +5,7 @@ using MappedArrays
 using ImageCore
 using ImageCore: NumberLike, GenericGrayImage, GenericImage
 using ColorVectorSpace
+using PoissonRandom
 
 import ..NoiseAPI: AbstractImageNoise, apply_noise, apply_noise!
 import Base: show
@@ -16,10 +17,10 @@ apply_noise(img::AbstractArray{T},
     apply_noise(of_eltype(floattype(eltype(img)), img), n, args...; kargs...)
 
 include("AdditiveWhiteGaussianNoise.jl")
+include("PoissonNoise.jl")
 
 export
     apply_noise, apply_noise!,
-
-    AdditiveWhiteGaussianNoise
-
+    AdditiveWhiteGaussianNoise,
+    PoissonNoise
 end # end module
