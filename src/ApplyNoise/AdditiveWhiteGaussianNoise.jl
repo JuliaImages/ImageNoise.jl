@@ -13,7 +13,7 @@ converted to RGB images first.
 
 # Examples
 ```julia
-img = testimage("lena_gray_256")
+img = testimage("fabio_gray_256")
 n = AdditiveWhiteGaussianNoise(0.1)
 out = apply_noise(img, n)
 ```
