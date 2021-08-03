@@ -10,11 +10,14 @@ using ColorVectorSpace
 import ..NoiseAPI: AbstractImageDenoiseAlgorithm, reduce_noise, reduce_noise!
 
 include("compat.jl")
+include("BM3DDenoise.jl")
 include("NonlocalMean.jl")
 
 export
     reduce_noise, reduce_noise!,
 
+    # BM3D
+    BM3D,
     # Non-local mean filter for gaussian noise
     NonlocalMean, get_NonlocalMean_rp
 
