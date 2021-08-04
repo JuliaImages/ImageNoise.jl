@@ -1,9 +1,10 @@
+# ---
 # title: The BM3D(sparse 3D transform-domain collaborative filtering) denoising algorithm.
 # id: bm3d-demo
 # cover: assets/bm3d_cover.png
 # date: 2021-08-04
-# author: Longhao Chen <Longhao.Chen@outlook.com>
-# description: This demo shows how to use the BM3D denoising algorithm to reduce gaussian noise
+# author: "[Longhao Chen](https://github.com/Longhao-Chen)"
+# description: Use the BM3D denoising algorithm to reduce gaussian noise
 # ---
 
 using ImageNoise
