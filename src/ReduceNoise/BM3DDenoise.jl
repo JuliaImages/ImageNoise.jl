@@ -57,9 +57,9 @@ struct BM3D <: AbstractImageDenoiseAlgorithm
 end
 BM3D(σ) = BM3D(σ, Base.invokelatest(checked_import(BM3DDenoise).bm3d_config))
 
-function (f::BM3D)(out::AbstractArray,
-                           img::AbstractArray)
+function (f::BM3D)(out::AbstractArray{T},
+                           img::AbstractArray{T}) where T
     axes(out) == axes(img) || ArgumentError("Images should have the same axes.")
-    out = Base.invokelatest(checked_import(BM3DDenoise).bm3d, img, f.σ, f.config)
+    out .= T.(Base.invokelatest(checked_import(BM3DDenoise).bm3d, img, f.σ, f.config))
     return out
 end
