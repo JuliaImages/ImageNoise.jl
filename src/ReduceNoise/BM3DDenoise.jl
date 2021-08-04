@@ -14,16 +14,6 @@ end
 
 The BM3D(sparse 3D transform-domain collaborative filtering) denoising algorithm.
 
-!!! info
-
-    This feature depends on the package: `BM3DDenoise`
-
-    You can install it by `Pkg`:
-    ```
-    using Pkg
-    Pkg.add("BM3DDenoise")
-    ```
-
 # Arguments
 
 * `σ::Float64` is the variance of the noise.

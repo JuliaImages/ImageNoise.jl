@@ -4,6 +4,7 @@ authors = ["Johnny Chen <johnnychen94@hotmail.com>"]
 version = "0.1.2"
 
 [deps]
+BM3DDenoise = "95fb3b36-088a-43fb-bb1b-b1f34fadbd7d"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 ImageCore = "a09fc81d-aa75-5fe9-8630-4744c3626534"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -11,13 +12,13 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [compat]
+BM3DDenoise = "1.0"
 Distributions = "0.19, 0.20, 0.21, 0.22, 0.23, 0.24, 0.25"
 ImageCore = "0.9"
 Reexport = "0.2, 1.0"
 julia = "1.6"
 
 [extras]
-BM3DDenoise = "95fb3b36-088a-43fb-bb1b-b1f34fadbd7d"
 ImageIO = "82e4d734-157c-48bb-816b-45c225c6df19"
 ImageMagick = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
 ImageQualityIndexes = "2996bd0c-7a13-11e9-2da2-2f5ce47296a9"
@@ -27,4 +28,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestImages = "5e47fb64-e119-507b-a336-dd2b206d9990"
 
 [targets]
-test = ["BM3DDenoise", "ImageIO", "ImageMagick", "ImageQualityIndexes", "ImageTransformations", "ReferenceTests", "Test", "TestImages"]
+test = ["ImageIO", "ImageMagick", "ImageQualityIndexes", "ImageTransformations", "ReferenceTests", "Test", "TestImages"]
