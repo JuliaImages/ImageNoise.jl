@@ -1,4 +1,5 @@
 [deps]
+BM3DDenoise = "95fb3b36-088a-43fb-bb1b-b1f34fadbd7d"
 DemoCards = "311a05b2-6137-4a5a-b473-18580a3d38b5"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
