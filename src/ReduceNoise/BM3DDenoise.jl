@@ -58,7 +58,7 @@ end
 BM3D(σ) = BM3D(σ, Base.invokelatest(checked_import(BM3DDenoise).bm3d_config))
 
 function (f::BM3D)(out::AbstractArray{T},
-                           img::AbstractArray{T}) where T
+                           img::AbstractArray) where T
     axes(out) == axes(img) || ArgumentError("Images should have the same axes.")
     out .= T.(Base.invokelatest(checked_import(BM3DDenoise).bm3d, img, f.σ, f.config))
     return out
