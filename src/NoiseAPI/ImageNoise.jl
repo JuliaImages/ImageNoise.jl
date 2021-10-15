@@ -1,7 +1,5 @@
-abstract type AbstractImageNoise <: AbstractImageFilter end
 abstract type AbstractImageDenoiseAlgorithm <: AbstractImageFilter end
 
-@filter_api apply_noise AbstractImageNoise
 @filter_api reduce_noise AbstractImageDenoiseAlgorithm
 
 """

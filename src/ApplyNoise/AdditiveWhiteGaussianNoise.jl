@@ -2,16 +2,16 @@
     AdditiveWhiteGaussianNoise <: AbstractImageNoise
     AdditiveWhiteGaussianNoise([μ=0.0], σ)
 
-apply white gaussian noise to image
+Apply additive white gaussian noise to image.
 
-For gray images, it uses the following formula:
+For gray image, it uses the following formula:
 
-    out = clamp01.(in .+ σ .* randn(size(in)) .+ μ)
+    out = in .+ σ .* randn(size(in)) .+ μ
 
-RGB images are treated as 3D-gray images, generic Color3 images will be
-converted to RGB images first.
+Noise for RGB images are generated per channel.
 
 # Examples
+
 ```julia
 img = testimage("lena_gray_256")
 n = AdditiveWhiteGaussianNoise(0.1)
@@ -34,35 +34,37 @@ struct AdditiveWhiteGaussianNoise <: AbstractImageNoise
         new(μ, σ)
     end
 end
-const AWGN = AdditiveWhiteGaussianNoise
+const AWGN = AdditiveWhiteGaussianNoise # This short form is only for internal usage
 AWGN(σ::Real) = AWGN(zero(σ), σ)
 
 show(io::IO, n::AWGN) = println(io, "AdditiveWhiteGaussianNoise(μ=", n.μ, ", σ=", n.σ, ")")
 
-function (n::AWGN)(out::AbstractArray{T},
-                   in::GenericGrayImage;
-                   rng::Union{AbstractRNG, Nothing} = nothing
-                   ) where T<:Number
-    if rng === nothing
-        _rand = x->randn(floattype(T), size(x))
-    else
-        _rand = x->randn(rng, floattype(T), size(x))
-    end
-    out .= clamp01.(in .+ n.σ .* _rand(in) .+ n.μ)
+(n::AWGN)(out::AbstractArray, rng::AbstractRNG) = n(out, out, rng)
+function (n::AWGN)(out::AbstractArray{T}, in::AbstractArray, rng::AbstractRNG) where T<:Number
+    FT = floattype(T)
+    σ = convert(FT, n.σ)
+    μ = convert(FT, n.μ)
+    σ ≈ 0 && μ ≈ 0 && return out
+
+    axes(out) == axes(in) || throw(DimensionMismatch("Axes of input $(axes(in)) does not match axes of output $(axes(out))"))
+    noise = randn(rng, FT, size(out))
+    noise = OffsetArrays.OffsetArray(noise, OffsetArrays.Origin(first.(axes(out))))
+    @. out = project_to(T, in + σ * noise + μ)
+    return out
 end
 
-for T in (AbstractGray, AbstractRGB)
-    @eval function (n::AWGN)(out::AbstractArray{<:$T},
-                             in::GenericImage;
-                             rng::Union{AbstractRNG, Nothing} = nothing)
-        n(channelview(out), channelview(in); rng=rng)
-    end
-end
+function (n::AWGN)(out::AbstractArray{CT}, in::AbstractArray, rng::AbstractRNG) where CT<:Union{AbstractGray, AbstractRGB}
+    FT = floattype(eltype(CT))
+    σ = convert(FT, n.σ)
+    μ = convert(FT, n.μ) * oneunit(base_color_type(FT))
+    σ ≈ 0 && μ ≈ 0 && return out
 
-# Since generic Color3 aren't vector space, they are converted to RGB images
-(n::AWGN)(out::AbstractArray{<:Color3},
-         in::GenericImage;
-         rng::Union{AbstractRNG, Nothing} = nothing) =
-    n(channelview(of_eltype(RGB, out)),
-      channelview(of_eltype(RGB, in));
-      rng=rng)
+    axes(out) == axes(in) || throw(DimensionMismatch("Axes of input $(axes(in)) does not match axes of output $(axes(out))"))
+    noise = ntuple(Val(length(CT))) do _ # use Val to assist type inference
+        # For RGB image, the noise is generated per channel
+        randn(rng, FT, size(out))
+    end
+    noise = colorview(base_color_type(CT), noise...)
+    @. out = project_to(CT, in + σ * noise + μ)
+    return out
+end
