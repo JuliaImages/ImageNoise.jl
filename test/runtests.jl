@@ -5,14 +5,15 @@ using Test, ReferenceTests, TestImages, Random
 include("testutils.jl")
 
 @testset "ImageNoise" begin
-# ApplyNoise
-@info "Test: ApplyNoise"
-include("ApplyNoise/AdditiveWhiteGaussianNoise.jl")
 
-# ReduceNoise
-@info "Test: ReduceNoise"
-include("ReduceNoise/NonlocalMean.jl")
-include("ReduceNoise/BM3DDenoise.jl")
+@testset "ApplyNoise" begin
+    include("ApplyNoise/AdditiveWhiteGaussianNoise.jl")
 end
 
+@testset "ReduceNoise" begin
+    include("ReduceNoise/NonlocalMean.jl")
+    include("ReduceNoise/BM3DDenoise.jl")
+end
+
+end
 nothing

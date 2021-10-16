@@ -3,7 +3,7 @@
     @testset "Numeric" begin
         img_gray = n0f8.(imresize(testimage("lena_gray_256"); ratio=0.25))
         n = AdditiveWhiteGaussianNoise(0.05)
-        noisy_img = apply_noise(img_gray, n; rng=MersenneTwister(0))
+        noisy_img = apply_noise(n, img_gray, MersenneTwister(0))
 
         f = BM3D(0.05)
         denoised_img = reduce_noise(noisy_img, f)

@@ -160,7 +160,7 @@ function wsqeucliean(W, X, Y)
     rst = zero(eltype(W))
     # use linear indexing
     @inbounds @simd for i = 1:length(W)
-        rst += W[i] * _abs2(X[i] - Y[i])
+        rst += W[i] * abs2(X[i] - Y[i])
     end
     return rst
 end
